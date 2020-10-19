@@ -11,6 +11,8 @@ import com.example.microserviceVoiture.stockage.FileSystemStorageService;
 import com.example.microserviceVoiture.repository.CarRepository;
 import com.fasterxml.jackson.databind.util.JSONPObject;
 import net.minidev.json.JSONArray;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.hateoas.EntityModel;
@@ -51,15 +53,21 @@ public class CarController {
     }
 
     @GetMapping("/cars/sortByPrix")
-    List<Car> allSortByPrix() {
-        List<Car> cars = (List<Car>) repository.findByOrderByPrix();
-        return cars;
+    JSONArray allSortByPrix() {
+        RestTemplate restTemplate = new RestTemplate();
+        JSONArray result1 = restTemplate.getForObject("http://localhost:8081/cars/sortByPrix", JSONArray.class);
+        JSONArray result2 = restTemplate.getForObject("http://localhost:8082/motos/sortByPrix", JSONArray.class);
+        result1.addAll(result2);
+        return result1;
     }
 
     @GetMapping("/cars/sortByMarque")
-    List<Car> allSortByMarque() {
-        List<Car> cars = (List<Car>) repository.findByOrderByMarque();
-        return cars;
+    JSONArray allSortByMarque() {
+        RestTemplate restTemplate = new RestTemplate();
+        JSONArray result1 = restTemplate.getForObject("http://localhost:8081/cars/sortByMarque", JSONArray.class);
+        JSONArray result2 = restTemplate.getForObject("http://localhost:8082/motos/sortByMarque", JSONArray.class);
+        result1.addAll(result2);
+        return result1;
     }
 
     @GetMapping("/download/{filename:.+}")
@@ -73,17 +81,16 @@ public class CarController {
     }
 
     @PostMapping("/add")
-    ResponseEntity<?> newcar(@RequestBody JSONPObject nouvCar) {
-        if (nouvCar.getFunction().contains("type:voiture")){
-            RestTemplate restTemplate = new RestTemplate();
-            EntityModel<> entityModel
-            restTemplate.patchForObject("http://localhost:8081/add",entityModel.class)
+    ResponseEntity<?> newcar(@RequestBody Object nouvVeh) {
+        Logger log = LoggerFactory.getLogger(CarController.class);
+        RestTemplate restTemplate = new RestTemplate();
+        if (nouvVeh.toString().contains("type:voiture")){
+            log.info("voiture");
+            return restTemplate.postForEntity ("http://localhost:8081/add",nouvVeh,Object.class);
         }
-        EntityModel<Car> entityModel = assembler.toModel(repository.save(nouvCar));
-
-        return ResponseEntity //
-                .created(entityModel.getRequiredLink(IanaLinkRelations.SELF).toUri()) //
-                .body(entityModel);
+        else{
+            return restTemplate.postForEntity("http://localhost:8082/add", nouvVeh, Object.class);
+        }
     }
 
     @PostMapping("/uploadfile")
@@ -121,16 +128,31 @@ public class CarController {
     }
 
     @GetMapping("/cars/{id}")
-    EntityModel< Car> one(@PathVariable Long id) {
-         Car car = repository.findById(id) //
-                .orElseThrow(() -> new CarException(id));
-        return assembler.toModel(car);
+    EntityModel<?> one(@PathVariable String id) {
+        String type=id.substring(0, 1);
+        long idV=Long.parseLong(id.substring(1,2));
+        RestTemplate restTemplate = new RestTemplate();
+        if (type=="v"){
+            return restTemplate.getForObject("http://localhost:8081/cars/{id}" ,EntityModel.class);
+        }
+        else{
+            return restTemplate.getForObject("http://localhost:8082/motos/{id}",, EntityModel.class);
+        }
     }
 
     @DeleteMapping("/cars/delete/{id}")
-    ResponseEntity<?> suppVoiture(@PathVariable Long id) {
-        fileSytemStorage.deleteFile(repository.findById(id).get().getImage());
-        repository.deleteById(id);
-        return ResponseEntity.noContent().build();
+    ResponseEntity<?> suppVoiture(@PathVariable String id) {
+        String type=id.substring(0, 1);
+        long idV=Long.parseLong(id.substring(1,2));
+        RestTemplate restTemplate = new RestTemplate();
+        if (type=="v"){
+            restTemplate.delete("http://localhost:8081/cars/delete/{id}",idV);
+            return ResponseEntity.noContent().build();
+        }
+        else{
+            restTemplate.delete("http://localhost:8082/cars/delete/{id}", idV);
+            return ResponseEntity.noContent().build();
+        }
+
     }
 }
